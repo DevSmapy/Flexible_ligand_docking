@@ -1,7 +1,10 @@
 import os,subprocess,wget,shutil,gzip
 from pybel import *
-
+from rdkit import Chem
+from rdkit.Chem import AllChem
 # 0317 - modified ligand chain = protein chain
+# 0519 - modified to select manually protein pdb file
+# 0523 - modified transform from smiles to 3D structure
 class Protein_prep:
     def __init__(self,RosettaPath,pid,cid):
         self.RPath = RosettaPath
@@ -9,20 +12,24 @@ class Protein_prep:
         self.cid = cid
     def clean_by_rosetta(self):
         scripts_path = os.path.join(self.RPath,"tools/protein_tools/scripts/")
-
-        url = 'http://www.rcsb.org/pdb/files/%s.pdb.gz'%self.pid
-        wget.download(url)
-        with gzip.open("%s.pdb.gz"%self.pid.lower(),"rb") as F:
-            with open("%s.pdb"%self.pid,"wb") as W:
-                shutil.copyfileobj(F,W)
+        if os.path.exists("%s.pdb"%self.pid):
+                pass
+        else:
+                url = 'http://www.rcsb.org/pdb/files/%s.pdb.gz'%self.pid
+                wget.download(url)
+                with gzip.open("%s.pdb.gz"%self.pid.lower(),"rb") as F:
+                        with open("%s.pdb"%self.pid,"wb") as W:
+                                shutil.copyfileobj(F,W)
 
         subprocess.call("%s/clean_pdb.py %s %s"%(scripts_path,self.pid,self.cid),shell=True)
 
     def extract_origin_ligand(self):
         tline = []
+        print("protein: ",self.pid)
         with open("%s.pdb"%self.pid,"r") as F:
             for line in F.readlines():
                 if line.startswith("HETATM") and line[21:22] == self.cid:
+                    print(line)
                     tline.append(line.strip())
                 else:
                     pass
@@ -35,12 +42,20 @@ class Ligand_prep:
     def __init__(self,RosettaPath):
         self.RPath = RosettaPath
     def Make_3D_by_pybel(self,ismi,iname):
-        pmol = readstring("smi",ismi)
-        pmol.make3D()
-        pmol.removeh()
-        output = Outputfile("mol2",iname+".mol2")
-        output.write(pmol)
-        output.close()
+        rmol = Chem.MolFromSmiles(ismi)
+        rmol = Chem.AddHs(rmol)
+        AllChem.EmbedMolecule(rmol,randomSeed=1024)
+        rmol = Chem.RemoveHs(rmol)
+        w = Chem.SDWriter("%s_pre.sdf"%iname)
+        w.write(rmol)
+        w.close()
+        #pmol = readstring("smi",ismi)
+        #pmol.make3D()
+        #pmol.removeh()
+        #output = Outputfile("mol2",iname+".mol2")
+        #output.write(pmol)
+        #output.close()
+        os.system("obabel %s_pre.sdf -O %s.mol2"%(iname,iname))
 
     def Move_ligand_to_origin(self,ls_path,iname,iiname):
         tline = []

@@ -3,6 +3,7 @@ from pybel import *
 
 from docking_md.Preparation import *
 # 0317 - modified ligand preparation
+# 0519 - modified to double chain docking
 def Make_compound(pn,pc,li):
     complex_line = []
     shutil.copy("../../protein/%s_%s.pdb" % (pn, pc), "./")
@@ -42,6 +43,29 @@ def Make_rosetta_flags(pn,pc):
         W.write("-mistakes\n")
         W.write("\t-restore_pre_talaris_2013_behavior true\n")
 
+def concatering_proteins(pn,pc):
+    temp = []
+    flist = sorted(glob.glob("./*.rmv.pdb"))
+    for f in flist:
+        with open(f,"r") as F:
+            for line in F.readlines():
+                temp.append(line.strip())
+    with open("%s_%s.pdb"%(pn,pc),"w") as W:
+        for line in temp:
+            W.write(line+"\n")
+				
+def extract_origin_ligand(pn):
+    temp = []
+    with open("%s.pdb"%pn,"r") as F:
+        for line in F.readlines():
+            if line.startswith("HETATM") :
+                temp.append(line.strip())
+            else:
+                pass
+    with open("%s_lig.pdb"%pn,"w") as W:
+        for line in temp:
+            W.write(line+"\n")
+    subprocess.call("obabel %s_lig.pdb -O %s_lig.mol2"%(pn,pn),shell=True)
 if __name__ == "__main__":
     protein_name = sys.argv[1]
     protein_chain = sys.argv[2]
@@ -49,17 +73,29 @@ if __name__ == "__main__":
     ligand_path = "./data/ligand"
     output_path = "./data/output"
 
-    p = Protein_prep("/home/yklee/yklee/ex_Tools/rosetta_3.13/main/",protein_name,protein_chain)
-    l = Ligand_prep("/home/yklee/yklee/ex_Tools/rosetta_3.13/main/")
+    os.chdir(protein_path)
+    if len(protein_chain)>1:
+        for chain in protein_chain:
+            p = Protein_prep("/home/yklee/yklee/ex_Tools/rosetta_3.13/main/",protein_name,chain)
+            #os.chdir(protein_path)
+            p.clean_by_rosetta()
+            os.system("mv %s_%s.pdb %s_%s.rmv.pdb"%(protein_name,chain,protein_name,chain))
+        concatering_proteins(protein_name,protein_chain)
+        extract_origin_ligand(protein_name)
+    else:
+        p = Protein_prep("/home/yklee/yklee/ex_Tools/rosetta_3.13/main/",protein_name,protein_chain)
+        p.clean_by_rosetta()
+        p.extract_origin_ligand()
 
     # Protein Preparation
-    os.chdir(protein_path)
+    """os.chdir(protein_path)
     p.clean_by_rosetta()
-    p.extract_origin_ligand()
+    p.extract_origin_ligand()"""
 
     os.chdir("../../")
 
     # Ligand Preparation
+    l = Ligand_prep("/home/yklee/yklee/ex_Tools/rosetta_3.13/main/")
     os.chdir(ligand_path)
     ligand_files = sorted(glob.glob("*.smi"))
     for ligand in ligand_files:
@@ -129,7 +165,7 @@ if __name__ == "__main__":
         os.chdir(ligand)
         Make_rosetta_flags(protein_name,protein_chain)
         try:
-            subprocess.call("/home/yklee/yklee/ex_Tools/rosetta_3.13/main/source/bin/rosetta_scripts.linuxgccrelease @ options.txt -nstruct 10",shell=True)
+            subprocess.call("/home/yklee/yklee/ex_Tools/rosetta_3.13/main/source/bin/rosetta_scripts.linuxgccrelease @ options.txt -nstruct 1000",shell=True)
         except:
             pass
         os.chdir("../")
